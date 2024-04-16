@@ -1,0 +1,6 @@
+/__pycache__
+/.vscode
+/generated_files_from_mel
+/LJSpeech-1.1
+/cp_hifigan
+/test_mel_files

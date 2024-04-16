@@ -6,7 +6,9 @@ import torch.utils.data
 import numpy as np
 from librosa.util import normalize
 from scipy.io.wavfile import read
+from scipy.signal import decimate as down_sampling
 from librosa.filters import mel as librosa_mel_fn
+import melFilterBank 
 
 MAX_WAV_VALUE = 32768.0
 
@@ -54,7 +56,9 @@ def mel_spectrogram(y, n_fft, num_mels, sampling_rate, hop_size, win_size, fmin,
 
     global mel_basis, hann_window
     if fmax not in mel_basis:
-        mel = librosa_mel_fn(sampling_rate, n_fft, num_mels, fmin, fmax)
+        # mel = librosa_mel_fn(sampling_rate, n_fft, num_mels, fmin, fmax)
+        mfb = melFilterBank.MelFilterBank(n_fft=n_fft,numCoefficients=num_mels,sampleRate=sampling_rate)
+        mel = mfb.getMatrix()
         mel_basis[str(fmax)+'_'+str(y.device)] = torch.from_numpy(mel).float().to(y.device)
         hann_window[str(y.device)] = torch.hann_window(win_size).to(y.device)
 
@@ -62,7 +66,7 @@ def mel_spectrogram(y, n_fft, num_mels, sampling_rate, hop_size, win_size, fmin,
     y = y.squeeze(1)
 
     spec = torch.stft(y, n_fft, hop_length=hop_size, win_length=win_size, window=hann_window[str(y.device)],
-                      center=center, pad_mode='reflect', normalized=False, onesided=True)
+                      center=center, pad_mode='reflect', normalized=False, onesided=True,return_complex=True)
 
     spec = torch.sqrt(spec.pow(2).sum(-1)+(1e-9))
 
@@ -112,13 +116,15 @@ class MelDataset(torch.utils.data.Dataset):
         filename = self.audio_files[index]
         if self._cache_ref_count == 0:
             audio, sampling_rate = load_wav(filename)
+            if sampling_rate != self.sampling_rate:
+                # raise ValueError("{} SR doesn't match target {} SR".format(
+                #     sampling_rate, self.sampling_rate))
+                audio = down_sampling(audio,int(sampling_rate/self.sampling_rate))
+                sampling_rate = self.sampling_rate
             audio = audio / MAX_WAV_VALUE
             if not self.fine_tuning:
                 audio = normalize(audio) * 0.95
             self.cached_wav = audio
-            if sampling_rate != self.sampling_rate:
-                raise ValueError("{} SR doesn't match target {} SR".format(
-                    sampling_rate, self.sampling_rate))
             self._cache_ref_count = self.n_cache_reuse
         else:
             audio = self.cached_wav

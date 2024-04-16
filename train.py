@@ -17,9 +17,11 @@ from meldataset import MelDataset, mel_spectrogram, get_dataset_filelist
 from models import Generator, MultiPeriodDiscriminator, MultiScaleDiscriminator, feature_loss, generator_loss,\
     discriminator_loss
 from utils import plot_spectrogram, scan_checkpoint, load_checkpoint, save_checkpoint
+from sys import stdout
 
 torch.backends.cudnn.benchmark = True
 
+os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 
 def train(rank, a, h):
     if h.num_gpus > 1:
@@ -27,8 +29,8 @@ def train(rank, a, h):
                            world_size=h.dist_config['world_size'] * h.num_gpus, rank=rank)
 
     torch.cuda.manual_seed(h.seed)
-    device = torch.device('cuda:{:d}'.format(rank))
-
+    # device = torch.device('cuda:{:d}'.format(rank))
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     generator = Generator(h).to(device)
     mpd = MultiPeriodDiscriminator().to(device)
     msd = MultiScaleDiscriminator().to(device)
@@ -83,7 +85,7 @@ def train(rank, a, h):
     train_loader = DataLoader(trainset, num_workers=h.num_workers, shuffle=False,
                               sampler=train_sampler,
                               batch_size=h.batch_size,
-                              pin_memory=True,
+                              pin_memory=False,
                               drop_last=True)
 
     if rank == 0:
@@ -105,7 +107,7 @@ def train(rank, a, h):
     for epoch in range(max(0, last_epoch), a.training_epochs):
         if rank == 0:
             start = time.time()
-            print("Epoch: {}".format(epoch+1))
+            # print("Epoch: {}".format(epoch+1))
 
         if h.num_gpus > 1:
             train_sampler.set_epoch(epoch)
@@ -113,26 +115,31 @@ def train(rank, a, h):
         for i, batch in enumerate(train_loader):
             if rank == 0:
                 start_b = time.time()
+            # print(f'step:{steps} start')
             x, y, _, y_mel = batch
-            x = torch.autograd.Variable(x.to(device, non_blocking=True))
-            y = torch.autograd.Variable(y.to(device, non_blocking=True))
-            y_mel = torch.autograd.Variable(y_mel.to(device, non_blocking=True))
+            x = torch.autograd.Variable(x.to(device))
+            y = torch.autograd.Variable(y.to(device))
+            y_mel = torch.autograd.Variable(y_mel.to(device))
             y = y.unsqueeze(1)
-
+            # print('load data successfully.')
+            # stdout.flush()
             y_g_hat = generator(x)
             y_g_hat_mel = mel_spectrogram(y_g_hat.squeeze(1), h.n_fft, h.num_mels, h.sampling_rate, h.hop_size, h.win_size,
                                           h.fmin, h.fmax_for_loss)
-
+            # print('generator run successfully.')
+            # stdout.flush()
+            # print(x.shape,y.shape,y_mel.shape,y_g_hat.shape,y_g_hat_mel.shape)
             optim_d.zero_grad()
 
             # MPD
             y_df_hat_r, y_df_hat_g, _, _ = mpd(y, y_g_hat.detach())
             loss_disc_f, losses_disc_f_r, losses_disc_f_g = discriminator_loss(y_df_hat_r, y_df_hat_g)
+            # print('period discriminator run successfully.')
 
             # MSD
             y_ds_hat_r, y_ds_hat_g, _, _ = msd(y, y_g_hat.detach())
             loss_disc_s, losses_disc_s_r, losses_disc_s_g = discriminator_loss(y_ds_hat_r, y_ds_hat_g)
-
+            # print('scale discriminator run successfully.')
             loss_disc_all = loss_disc_s + loss_disc_f
 
             loss_disc_all.backward()
@@ -146,6 +153,9 @@ def train(rank, a, h):
 
             y_df_hat_r, y_df_hat_g, fmap_f_r, fmap_f_g = mpd(y, y_g_hat)
             y_ds_hat_r, y_ds_hat_g, fmap_s_r, fmap_s_g = msd(y, y_g_hat)
+            
+            # print(fmap_f_r.shape,fmap_f_g.shape,fmap_s_r.shape,fmap_s_g.shape)
+            
             loss_fm_f = feature_loss(fmap_f_r, fmap_f_g)
             loss_fm_s = feature_loss(fmap_s_r, fmap_s_g)
             loss_gen_f, losses_gen_f = generator_loss(y_df_hat_g)
@@ -154,7 +164,7 @@ def train(rank, a, h):
 
             loss_gen_all.backward()
             optim_g.step()
-
+            # print('loss and optimizer run successfully.')
             if rank == 0:
                 # STDOUT logging
                 if steps % a.stdout_interval == 0:
@@ -184,7 +194,7 @@ def train(rank, a, h):
                     sw.add_scalar("training/mel_spec_error", mel_error, steps)
 
                 # Validation
-                if steps % a.validation_interval == 0:  # and steps != 0:
+                if steps % a.validation_interval == 0: # and steps != 0:
                     generator.eval()
                     torch.cuda.empty_cache()
                     val_err_tot = 0
@@ -192,7 +202,7 @@ def train(rank, a, h):
                         for j, batch in enumerate(validation_loader):
                             x, y, _, y_mel = batch
                             y_g_hat = generator(x.to(device))
-                            y_mel = torch.autograd.Variable(y_mel.to(device, non_blocking=True))
+                            y_mel = torch.autograd.Variable(y_mel.to(device))
                             y_g_hat_mel = mel_spectrogram(y_g_hat.squeeze(1), h.n_fft, h.num_mels, h.sampling_rate,
                                                           h.hop_size, h.win_size,
                                                           h.fmin, h.fmax_for_loss)
@@ -214,7 +224,8 @@ def train(rank, a, h):
                         sw.add_scalar("validation/mel_spec_error", val_err, steps)
 
                     generator.train()
-
+            # print(f'step:{steps} over')
+            # stdout.flush()
             steps += 1
 
         scheduler_g.step()
@@ -236,7 +247,7 @@ def main():
     parser.add_argument('--input_validation_file', default='LJSpeech-1.1/validation.txt')
     parser.add_argument('--checkpoint_path', default='cp_hifigan')
     parser.add_argument('--config', default='')
-    parser.add_argument('--training_epochs', default=3100, type=int)
+    parser.add_argument('--training_epochs', default=3000, type=int)
     parser.add_argument('--stdout_interval', default=5, type=int)
     parser.add_argument('--checkpoint_interval', default=5000, type=int)
     parser.add_argument('--summary_interval', default=100, type=int)
@@ -257,6 +268,7 @@ def main():
         torch.cuda.manual_seed(h.seed)
         h.num_gpus = torch.cuda.device_count()
         h.batch_size = int(h.batch_size / h.num_gpus)
+        print('GPU num:',h.num_gpus)
         print('Batch size per GPU :', h.batch_size)
     else:
         pass
