@@ -21,7 +21,7 @@ from sys import stdout
 
 torch.backends.cudnn.benchmark = True
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "2"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
 def train(rank, a, h):
     if h.num_gpus > 1:
@@ -247,7 +247,7 @@ def main():
     parser.add_argument('--input_validation_file', default='LJSpeech-1.1/validation.txt')
     parser.add_argument('--checkpoint_path', default='cp_hifigan')
     parser.add_argument('--config', default='')
-    parser.add_argument('--training_epochs', default=3000, type=int)
+    parser.add_argument('--training_epochs', default=800, type=int)
     parser.add_argument('--stdout_interval', default=5, type=int)
     parser.add_argument('--checkpoint_interval', default=5000, type=int)
     parser.add_argument('--summary_interval', default=100, type=int)

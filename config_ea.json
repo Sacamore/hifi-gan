@@ -8,17 +8,17 @@
     "lr_decay": 0.999,
     "seed": 1234,
 
-    "upsample_rates": [8,5,2],
-    "upsample_kernel_sizes": [16,10,4],
+    "upsample_rates": [8,4,4],
+    "upsample_kernel_sizes": [16,8,8],
     "upsample_initial_channel": 256,
     "resblock_kernel_sizes": [3,5,7],
     "resblock_dilation_sizes": [[1,2], [2,6], [3,12]],
 
     "segment_size": 6400,
-    "num_mels": 40,
+    "num_mels": 80,
     "num_freq": 400,
     "n_fft": 400,
-    "hop_size": 80,
+    "hop_size": 128,
     "win_size": 400,
 
     "sampling_rate": 16000,

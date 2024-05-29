@@ -8,7 +8,7 @@ from librosa.util import normalize
 from scipy.io.wavfile import read
 from scipy.signal import decimate as down_sampling
 from librosa.filters import mel as librosa_mel_fn
-import melFilterBank 
+# import melFilterBank 
 
 MAX_WAV_VALUE = 32768.0
 
@@ -56,9 +56,9 @@ def mel_spectrogram(y, n_fft, num_mels, sampling_rate, hop_size, win_size, fmin,
 
     global mel_basis, hann_window
     if fmax not in mel_basis:
-        # mel = librosa_mel_fn(sampling_rate, n_fft, num_mels, fmin, fmax)
-        mfb = melFilterBank.MelFilterBank(n_fft=n_fft,numCoefficients=num_mels,sampleRate=sampling_rate)
-        mel = mfb.getMatrix()
+        mel = librosa_mel_fn(sr=sampling_rate,n_fft=n_fft,n_mels= num_mels,fmin= fmin,fmax= fmax)
+        # mfb = melFilterBank.MelFilterBank(n_fft=n_fft,numCoefficients=num_mels,sampleRate=sampling_rate)
+        # mel = mfb.getMatrix()
         mel_basis[str(fmax)+'_'+str(y.device)] = torch.from_numpy(mel).float().to(y.device)
         hann_window[str(y.device)] = torch.hann_window(win_size).to(y.device)
 
@@ -66,7 +66,7 @@ def mel_spectrogram(y, n_fft, num_mels, sampling_rate, hop_size, win_size, fmin,
     y = y.squeeze(1)
 
     spec = torch.stft(y, n_fft, hop_length=hop_size, win_length=win_size, window=hann_window[str(y.device)],
-                      center=center, pad_mode='reflect', normalized=False, onesided=True,return_complex=True)
+                      center=center, pad_mode='reflect', normalized=False, onesided=True,return_complex=False)
 
     spec = torch.sqrt(spec.pow(2).sum(-1)+(1e-9))
 
